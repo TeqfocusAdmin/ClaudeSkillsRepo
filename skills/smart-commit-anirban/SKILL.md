@@ -1,6 +1,6 @@
 ---
-name: smart-commit
-description: Writes clean, Conventional Commit-style messages from a git diff. Use this whenever the user is about to commit changes and wants a commit message written or improved, asks Claude to "write a commit message," "generate a commit," or is running this as part of a pre-commit hook or commit-msg workflow.
+name: "smart-commit-anirban"
+description: Writes clean, Conventional Commit-style messages from a git diff. Use th    is whenever the user is about to commit changes and wants a commit message written or improved, asks Claude to "write a commit message," "generate a commit," or is running this as part of a pre-commit hook or commit-msg workflow.
 ---
 
 # Smart Commit
