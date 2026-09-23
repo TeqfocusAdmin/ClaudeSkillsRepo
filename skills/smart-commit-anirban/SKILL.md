@@ -1,6 +1,11 @@
 ---
+<<<<<<< HEAD
 name: "smart-commit-anirban-autosync-github"
 description: Writes clean, Conventional Commit-style messages from a git diff. Use th    is whenever the user is about to commit changes and wants a commit message written or improved, asks Claude to "write a commit message," "generate a commit," or is running this as part of a pre-commit hook or commit-msg workflow.
+=======
+name: "smart-commit-anirban"
+description: Writes clean, Conventional Commit-style messages from a git diff. Use th    is whenever the user is about to commit changes and wants a commit message written or improved, asks Claude to "write a commit message," "generate a commit," or is running this as part of a pre-commit hook or commit-msg workflows.
+>>>>>>> ac137a04e6db878a2716170d0eec3abfbf4b5432
 ---
 
 # Smart Commit
