@@ -10,8 +10,10 @@ How it works:
   - Claude Code already downloads your account's enabled skills into
     ~/.claude/skills/synced/ whenever you use it signed into claude.ai.
   - This script writes a small "mirror + commit" script (sync-from-claude.ps1)
-    that copies that folder into a git repo and commits only if something
-    actually changed.
+    that pulls the latest repo, copies that folder into the repo's
+    claude-ai-snapshot/ folder, and commits + pushes only if something
+    actually changed. It never touches the repo's own skills/ folder, so
+    edits made there are safe.
   - A Claude Code hook runs that script once per session, timed to fire on
     your first prompt (not immediately at session start) so the background
     download from claude.ai has had time to finish.
@@ -28,6 +30,8 @@ $ErrorActionPreference = "Stop"
 $SyncedDir    = "$HOME\.claude\skills\synced"
 $DestRepo     = "$HOME\skills\claude-ai-skills-history"
 $RemoteUrl    = "https://github.com/TeqfocusAdmin/ClaudeSkillsRepo.git"   # change if you want a dedicated repo for this
+$Branch       = "master"
+$SnapshotDir  = "claude-ai-snapshot"   # folder inside the repo that holds the claude.ai mirror
 $SyncScript   = "$HOME\skills\sync-from-claude.ps1"
 $SettingsFile = "$HOME\.claude\settings.json"
 
@@ -37,7 +41,7 @@ if (-not (Test-Path "$DestRepo\.git")) {
     git -C $DestRepo init -q
     try { git -C $DestRepo remote add origin $RemoteUrl 2>$null } catch { }
     try { git -C $DestRepo fetch origin -q 2>$null } catch { }
-    try { git -C $DestRepo pull origin main --allow-unrelated-histories -q 2>$null } catch { }
+    try { git -C $DestRepo pull origin $Branch --allow-unrelated-histories -q 2>$null } catch { }
 }
 
 Write-Host "==> Writing $SyncScript"
@@ -49,7 +53,8 @@ $syncContent = @"
 
 `$SyncedDir  = "$SyncedDir"
 `$DestRepo   = "$DestRepo"
-`$DestSkills = "`$DestRepo\skills"
+`$Branch     = "$Branch"
+`$DestSkills = "`$DestRepo\$SnapshotDir"
 
 # Give claude.ai's background download a little time if it just started
 for (`$i = 0; `$i -lt 5; `$i++) {
@@ -58,6 +63,15 @@ for (`$i = 0; `$i -lt 5; `$i++) {
 }
 
 if (-not ((Test-Path `$SyncedDir) -and (Get-ChildItem `$SyncedDir -ErrorAction SilentlyContinue))) {
+    exit 0
+}
+
+# Catch up with GitHub first so our commit lands on top of the latest history.
+# (Git failures are checked via exit code -- try/catch doesn't see them in PS 5.1.)
+git -C `$DestRepo pull --rebase -q origin `$Branch
+if (`$LASTEXITCODE -ne 0) {
+    git -C `$DestRepo rebase --abort *> `$null
+    Write-Host "claude-to-git sync: couldn't pull from GitHub -- skipping this run."
     exit 0
 }
 
@@ -83,13 +97,17 @@ try {
         git commit -m "Auto-sync from claude.ai - `$(Get-Date -Format 'yyyy-MM-dd HH:mm')" -q
     }
 
-    `$ahead = `$null
-    try { `$ahead = git rev-list 'origin/master..HEAD' 2>`$null } catch { }
+    `$ahead = git rev-list "origin/`$Branch..HEAD"
     if (`$ahead) {
-        try {
-            git push origin HEAD -q
-        } catch {
-            Write-Host "claude-to-git sync: commit(s) saved locally, push failed (check your remote/auth)."
+        git push -q origin "HEAD:`$Branch"
+        if (`$LASTEXITCODE -ne 0) {
+            # Someone pushed in the meantime -- rebase onto it and try once more
+            git pull --rebase -q origin `$Branch
+            if (`$LASTEXITCODE -eq 0) { git push -q origin "HEAD:`$Branch" }
+            if (`$LASTEXITCODE -ne 0) {
+                git rebase --abort *> `$null
+                Write-Host "claude-to-git sync: commit(s) saved locally, push failed (check your remote/auth)."
+            }
         }
     }
 } finally {
@@ -153,7 +171,7 @@ $pythonPatch | python3 - $SettingsFile $hookCommand
 
 Write-Host ""
 Write-Host "Done."
-Write-Host "- Live snapshot of your claude.ai skills will land in: $DestRepo\skills"
+Write-Host "- Live snapshot of your claude.ai skills will land in: $DestRepo\$SnapshotDir"
 Write-Host "- It updates automatically the next time you use Claude Code (fires once, on your first prompt)"
 Write-Host "- To force a snapshot right now: powershell -ExecutionPolicy Bypass -File `"$SyncScript`""
 Write-Host "- Every auto-commit in that repo IS a version -- 'git log' shows the history"
